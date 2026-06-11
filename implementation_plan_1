@@ -1,0 +1,275 @@
+# SecureSuite — Full Database Integration & Feature Build-out
+
+Replace all mock/hardcoded data with live queries from the `vidhi_insurance` MySQL database, and build out every placeholder module into a fully working feature.
+
+## Database Schema Summary
+
+Your `vidhi_insurance` database has **18 tables**. The key business tables are:
+
+| Table | Purpose | Rows relate to |
+|---|---|---|
+| `agents` | Agent master (name, email, phone, brokerage rate) | customers, policies |
+| `customers` | Customer master (name, email, phone, address, agent_id) | agents, policies, claims, healths |
+| `policies` | Core policy records (numbers, dates, premiums, insurer, type) | customers, agents, motors, fires, healths, payments, claims |
+| `claims_master` | Claims (claim_no, loss details, status, settlement) | customers, policies |
+| `payments` | Premium payments (type, cheque/bank, amount, date) | policies |
+| `motors` | Motor-specific policy data (vehicle reg, engine, chassis) | policies |
+| `fires` | Fire-specific policy data (risk location, valuations) | policies |
+| `healths` | Health-specific member data (member name, DOB, relation) | policies, customers |
+| `agent_brokerages` | Agent commission payouts | agents |
+| `company_brokerages` | Brokerage received from insurers | — |
+| `quotations` | Quote proposals linked to policies | policies |
+| `timeline_entries` | Activity log per policy | policies |
+| `users` | Login users (name, email, username, password, role) | — |
+
+---
+
+## Phase 1 — Server Functions & Data Layer (Foundation)
+
+Create TanStack Start server functions (run on the server, called from the client) to query the database with Prisma. This is the backbone everything else depends on.
+
+### Data Access Layer
+
+#### [NEW] `src/lib/api/agents.server.ts`
+- `getAgents()` — all agents with customer count & policy count
+- `getAgentById(id)` — single agent with related customers & policies
+- `createAgent(data)` / `updateAgent(id, data)` / `deleteAgent(id)`
+
+#### [NEW] `src/lib/api/customers.server.ts`
+- `getCustomers()` — all customers with agent name & policy count
+- `getCustomerById(id)` — single customer with policies & claims
+- `createCustomer(data)` / `updateCustomer(id, data)` / `deleteCustomer(id)`
+
+#### [NEW] `src/lib/api/policies.server.ts`
+- `getPolicies()` — all policies with customer name, agent name, status derived from dates
+- `getPolicyById(id)` — single policy with motors/fires/healths/payments/timeline
+- `createPolicy(data)` / `updatePolicy(id, data)`
+- `getPolicyStats()` — KPIs: total, active, expired, premium collected
+
+#### [NEW] `src/lib/api/claims.server.ts`
+- `getClaims()` — all claims with customer & policy info
+- `getClaimById(id)` — single claim detail
+- `createClaim(data)` / `updateClaim(id, data)`
+
+#### [NEW] `src/lib/api/payments.server.ts`
+- `getPaymentsByPolicy(policyId)` — payment history for a policy
+- `createPayment(data)`
+
+#### [NEW] `src/lib/api/brokerages.server.ts`
+- `getAgentBrokerages()` — agent commission payouts
+- `getCompanyBrokerages()` — insurer brokerage received
+- `createAgentBrokerage(data)` / `createCompanyBrokerage(data)`
+
+#### [NEW] `src/lib/api/dashboard.server.ts`
+- `getDashboardStats()` — aggregated KPIs (total policies, active, expired, premiums, claims, customers, agents)
+- `getMonthlyPremiumTrend()` — group policies by month for chart
+- `getPolicyTypeDistribution()` — group by p_type for pie chart
+- `getUpcomingRenewals(limit)` — policies expiring within 60 days
+
+#### [MODIFY] `src/lib/mock-data.ts`
+- Keep only the `Role`, `ROLES`, `CURRENT_USER`, and `formatINR` utility
+- Delete all mock arrays (`customers`, `policies`, `claims`, `renewals`, `kpis`, etc.)
+
+---
+
+## Phase 2 — Replace Mock Data in Every Page
+
+### Dashboard
+
+#### [MODIFY] `src/routes/index.tsx`
+- Admin dashboard: call `getDashboardStats()`, `getMonthlyPremiumTrend()`, `getPolicyTypeDistribution()`, `getUpcomingRenewals(5)` via server functions
+- Agent dashboard: filter stats by logged-in agent
+- Customer dashboard: filter by logged-in customer
+- All KPI cards, charts, and tables will show real numbers
+
+---
+
+### Policies Page
+
+#### [MODIFY] `src/routes/policies.tsx`
+- Replace `import { policies } from mock-data` with a server function call to `getPolicies()`
+- Derive status from `start_date` / `end_date` (Active if today is between them, Expired if past end_date)
+- Map `p_type` from DB (e.g., "Health", "Motor", "Fire") to the existing type icons
+- Wire pagination (Prev/Next) to actual offset/limit queries
+
+---
+
+### Customers Page
+
+#### [MODIFY] `src/routes/customers.tsx`
+- Replace mock `customers` import with `getCustomers()` server call
+- Show agent name from the `agents` relation
+- Show policy count from `_count` on the Prisma relation
+- Wire search/filter to actual DB queries
+
+---
+
+### Claims Page
+
+#### [MODIFY] `src/routes/claims.tsx`
+- Replace mock `claims` with `getClaims()` server call
+- Show real claim numbers, customer names, policy numbers, dates, amounts, and status
+
+---
+
+### Renewals Page
+
+#### [MODIFY] `src/routes/renewals.tsx`
+- Query policies where `end_date` is within 60 days of today (upcoming) or past today (overdue)
+- Calculate `daysLeft` dynamically from `end_date`
+- Show real premium values from `total` column
+
+---
+
+### Agents Page
+
+#### [MODIFY] `src/routes/agents.tsx`
+- Replace hardcoded `AGENTS` array with `getAgents()` server call
+- Show real customer count, policy count, and commission from `agent_brokerages` table
+
+---
+
+### Reports Page
+
+#### [MODIFY] `src/routes/reports.tsx`
+- Keep the existing card layout
+- Wire the PDF/Excel/CSV buttons to actually export data from the respective server functions
+
+---
+
+## Phase 3 — Build Out Placeholder Modules
+
+These pages currently show the `ModulePlaceholder` component ("Module Preview"). We will replace each with a real, working page.
+
+### Accounts — Agent Brokerage
+
+#### [MODIFY] `src/routes/accounts.agent-brokerage.tsx`
+- Full page with table of agent brokerage payouts from `agent_brokerages` table
+- Show agent name, policy IDs, total amount, payment method, payment date
+- KPI cards: Total paid, Pending, This month's payouts
+- Add "Record Payout" button/form
+
+---
+
+### Accounts — Company Brokerage
+
+#### [MODIFY] `src/routes/accounts.company-brokerage.tsx`
+- Table of company brokerage receipts from `company_brokerages` table
+- Show received amount, GST, payment method, payment date
+- KPI cards: Total received, GST collected, This month
+- Add "Record Receipt" button/form
+
+---
+
+### Masters — Agent Master
+
+#### [MODIFY] `src/routes/masters.agents.tsx`
+- Full CRUD table for agents from the `agents` table
+- Add/Edit agent form (name, email, phone, address, brokerage_rate)
+- Delete with confirmation dialog
+
+---
+
+### Masters — Customer Master
+
+#### [MODIFY] `src/routes/masters.customers.tsx`
+- Full CRUD table for customers from the `customers` table
+- Add/Edit customer form (name, email, phone, address, agent assignment)
+- Delete with confirmation dialog
+
+---
+
+### Masters — Insurance Companies
+
+#### [MODIFY] `src/routes/masters.companies.tsx`
+- Extract unique `insurer_name` values from the `policies` table
+- Display as a managed list/table
+- Can later be upgraded to its own DB table
+
+---
+
+### Masters — Policy Types
+
+#### [MODIFY] `src/routes/masters.policy-types.tsx`
+- Extract unique `p_type` values from the `policies` table
+- Display as a managed list
+
+---
+
+### Masters — Banks
+
+#### [MODIFY] `src/routes/masters.banks.tsx`
+- Extract unique `bank_name` values from the `payments` table
+- Display as a managed list
+
+---
+
+### Masters — TPA Master
+
+#### [MODIFY] `src/routes/masters.tpa.tsx`
+- Extract unique `tpa` values from the `policies` table
+- Display as a managed list
+
+---
+
+## Phase 4 — CRUD Forms & Modals
+
+Add create/edit forms as slide-over panels or modal dialogs for:
+
+#### [NEW] `src/components/forms/policy-form.tsx`
+- Create/edit a policy with all fields from the `policies` table
+- Sub-forms for Motor, Fire, Health details based on `p_type`
+
+#### [NEW] `src/components/forms/customer-form.tsx`
+- Create/edit customer, assign agent via dropdown
+
+#### [NEW] `src/components/forms/agent-form.tsx`
+- Create/edit agent with brokerage rate
+
+#### [NEW] `src/components/forms/claim-form.tsx`
+- Register a new claim, link to customer & policy
+
+#### [NEW] `src/components/forms/payment-form.tsx`
+- Record a premium payment for a policy
+
+---
+
+## Phase 5 — Future Enhancements (Nice-to-haves)
+
+These are additional features you could build after the core is working:
+
+| Feature | Description |
+|---|---|
+| **Authentication** | Real login/logout using the `users` table (admin/agent/customer roles) |
+| **Policy Detail Page** | `/policies/:id` — full detail view with payments, timeline, motor/fire/health sub-data |
+| **Customer Detail Page** | `/customers/:id` — profile with all policies, claims, payments history |
+| **Quotation Management** | Create/view quotations from the `quotations` table, convert to policy |
+| **Timeline / Activity Log** | Show `timeline_entries` on the policy detail page |
+| **Endorsements** | Use `endorse_date`, `endorsement_no`, `endorse_detail` fields on policies |
+| **Search Across Everything** | Global search bar in the navbar that searches policies, customers, agents, claims |
+| **PDF Generation** | Actually generate report PDFs from the Reports page |
+| **Email Notifications** | Send renewal reminder emails to customers |
+| **Dark/Light Theme Toggle** | Add a toggle in the navbar |
+
+---
+
+## Verification Plan
+
+### After Each Phase
+- Run `npm run dev` and verify pages load without errors
+- Confirm data displayed matches what's in phpMyAdmin
+- Test create/edit/delete operations and verify changes persist in DB
+
+### Manual Verification
+- Open each page and compare the numbers with raw SQL queries in phpMyAdmin
+- Test search/filter functionality on Policies, Customers, Claims pages
+- Test the role switcher (Admin/Agent/Customer) to verify data is properly scoped
+
+---
+
+## Open Questions
+
+> [!IMPORTANT]
+> 1. **Which phases should I start with?** I recommend Phase 1 + Phase 2 first (replace mock data with real DB queries on all existing pages). Should I start with that?
+> 2. **Authentication**: The `users` table has roles (admin/agent/customer). Do you want real login/logout now, or keep the demo role-switcher for now?
+> 3. **Policy status**: Your DB doesn't have an explicit `status` column on policies. Should I derive it from dates (Active = today between start_date and end_date, Expired = past end_date)?
